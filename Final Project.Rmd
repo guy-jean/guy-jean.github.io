@@ -1,0 +1,191 @@
+---
+title: "CMSC 320 Final Project"
+author: "Ryan Brown, Collin Brown"
+date: "5/18/2019"
+output: html_document
+---
+
+```{r setup}
+library(tidyverse)
+library(rvest)
+library(ggrepel)
+url1 <- "https://oracleselixir.com/statistics/na/lcs-2019-spring-regular-season-player-statistics/"
+url2 <- "https://oracleselixir.com/statistics/na/na-lcs-2018-summer-regular-season-player-statistics/"
+url3 <- "https://oracleselixir.com/statistics/na/na-lcs-2018-spring-regular-season-player-statistics/"
+url4 <- "https://oracleselixir.com/statistics/na/na-lcs-2017-summer-regular-season-player-statistics/"
+```
+
+```{r warning = FALSE}
+spring_2019_tab <- read_html(url1) %>%
+  html_node("#tablepress-460")%>%
+  html_table() %>% as.data.frame()
+
+summer_2018_tab <- read_html(url2) %>%
+  html_node("#tablepress-408")%>%
+  html_table() %>% as.data.frame()
+
+spring_2018_tab <- read_html(url3) %>%
+  html_node("#tablepress-370")%>%
+  html_table() %>% as.data.frame()
+
+summer_2017_tab <- read_html(url4) %>%
+  html_node("#tablepress-307")%>%
+  html_table() %>% as.data.frame()
+
+spring_2019_tab %>% head(5)
+summer_2018_tab %>% head(5)
+spring_2018_tab %>% head(5)
+summer_2017_tab %>% head(5)
+```
+```{r warning = FALSE}
+spring_2019_tab$year <- 2019
+spring_2019_tab$split <- "spring"
+
+summer_2018_tab$year <- 2018
+summer_2018_tab$split <- "summer"
+
+spring_2018_tab$year <- 2018
+spring_2018_tab$split <- "spring"
+
+summer_2017_tab$year <- 2017
+summer_2017_tab$split <- "summer"
+
+lcs_tab <- rbind(spring_2019_tab, summer_2018_tab, spring_2018_tab, summer_2017_tab)
+lcs_tab <- lcs_tab %>% filter(GP > 5)
+```
+
+```{r warning = FALSE}
+lcs_tab$`W%` <- gsub("%", "", lcs_tab$`W%`)
+lcs_tab$KP <- gsub("%", "", lcs_tab$KP)
+lcs_tab$`DTH%` <- gsub("%", "", lcs_tab$`DTH%`)
+lcs_tab$`FB%` <- gsub("%", "", lcs_tab$`FB%`)
+lcs_tab$`CS%P15` <- gsub("%", "", lcs_tab$`CS%P15`)
+lcs_tab$`DMG%` <- gsub("%", "", lcs_tab$`DMG%`)
+lcs_tab$`Gold%` <- gsub("%", "", lcs_tab$`Gold%`)
+
+                                
+lcs_tab$`W%` <- (parse_double(lcs_tab$`W%`) / 100.0)
+lcs_tab$KP <- (parse_double(lcs_tab$KP) / 100.0)
+lcs_tab$`DTH%` <- (parse_double(lcs_tab$`DTH%`) / 100.0)
+lcs_tab$`FB%` <- (parse_double(lcs_tab$`FB%`) / 100.0)
+lcs_tab$`CS%P15` <- (parse_double(lcs_tab$`CS%P15`) / 100.0)
+lcs_tab$`DMG%` <- (parse_double(lcs_tab$`DMG%`) / 100.0)
+lcs_tab$`Gold%` <- (parse_double(lcs_tab$`Gold%`) / 100.0)
+
+colnames(lcs_tab)[colnames(lcs_tab)=="W%"] <- "Win_P"
+colnames(lcs_tab)[colnames(lcs_tab)=="DTH%"] <- "Death_Share"
+colnames(lcs_tab)[colnames(lcs_tab)=="FB%"] <- "FB_P"
+colnames(lcs_tab)[colnames(lcs_tab)=="CS%P15"] <- "CS_Share_Pre15"
+colnames(lcs_tab)[colnames(lcs_tab)=="DMG%"] <- "Damage_Share"
+colnames(lcs_tab)[colnames(lcs_tab)=="Gold%"] <- "Gold_Share"
+
+lcs_tab %>% head(10)
+```
+
+
+```{r warning = FALSE}
+plot_tab <- lcs_tab %>% 
+  filter(year == 2019, split == "spring") %>%
+  group_by(Player)
+
+ggplot(plot_tab, aes(x = Gold_Share, y = Damage_Share, label = Player)) +
+  geom_jitter() +
+  labs(title ="Damage Share vs Gold Share", x = "Gold Share", y = "Damage Share") + 
+  geom_text_repel(color = "Orange") 
+
+plot_tab %>% head(5)
+```
+
+
+```{r warning = FALSE}
+eff_fit <- lm(Damage_Share~Gold_Share, data=plot_tab)
+
+eff_fit
+```
+```{r warning = FALSE}
+plot_tab <- plot_tab %>% 
+  mutate(expected_Damage_Share = eff_fit$coefficients[1]+ (eff_fit$coefficients[2] * Gold_Share)) %>%
+  mutate(efficiency = Damage_Share - expected_Damage_Share) 
+
+plot_tab %>% head(5)
+```
+
+```{r warning = FALSE}
+plot_tab$Player <- factor(plot_tab$Player, levels = plot_tab$Player[order(-plot_tab$efficiency)])
+
+most_eff <- plot_tab %>% arrange(desc(efficiency)) %>% head(10)
+
+ggplot(most_eff, aes(x = Player, y = efficiency)) +
+  geom_bar(stat = "identity") +
+  labs(title ="Top 10 Most Efficient Players", x = "Player", y = "Efficiency") 
+
+least_eff <- plot_tab %>% arrange(efficiency) %>% head(10)
+
+ggplot(least_eff, aes(x = Player, y = efficiency)) +
+  geom_bar(stat = "identity") +
+  labs(title ="Bottom 10 Least Efficient Players", x = "Player", y = "Efficiency") 
+```
+
+```{r warning = FALSE}
+pos_tab <- plot_tab %>% group_by(Pos) %>% summarize(mean_Gold_Share=mean(Gold_Share), mean_Damage_Share=mean(Damage_Share)) 
+
+ggplot(pos_tab, aes(x = Pos, y = mean_Gold_Share)) +
+  geom_bar(stat = "identity") +
+  labs(title ="Mean Gold Share by Position", x = "Position", y = "Mean Gold Share") 
+
+ggplot(pos_tab, aes(x = Pos, y = mean_Damage_Share)) +
+  geom_bar(stat = "identity") +
+  labs(title ="Mean Damage Share by Position", x = "Position", y = "Mean Damage Share")
+```
+
+```{r warning = FALSE}
+plot_tab <- lcs_tab %>% 
+  filter(year == 2019, split == "spring") %>%
+  group_by(Player)
+
+plot_tab <- plot_tab %>%
+  group_by(Pos) %>%
+  mutate(standard_Gold_Share = (Gold_Share - mean(Gold_Share)) / sd(Gold_Share))
+
+plot_tab <- plot_tab %>%
+  group_by(Pos) %>%
+  mutate(standard_Damage_Share = (Damage_Share - mean(Damage_Share)) / sd(Damage_Share))
+
+plot_tab %>% head(10) 
+```
+```{r warning = FALSE}
+ggplot(plot_tab, aes(x = standard_Gold_Share, y = standard_Damage_Share, label = Player)) +
+  geom_jitter() +
+  labs(title ="Standardized Damage Share vs Standardized Gold Share", x = "Standardized Gold Share", y = "Standardized Damage Share") + 
+  geom_text_repel(color = "Orange") +
+   geom_smooth(method=lm)
+```
+```{r warning = FALSE}
+eff_fit <- lm(standard_Damage_Share~standard_Gold_Share, data=plot_tab)
+
+eff_fit
+```
+```{r warning = FALSE}
+plot_tab <- plot_tab %>% 
+  mutate(standard_expected_Damage_Share = eff_fit$coefficients[1]+ (eff_fit$coefficients[2] * standard_Gold_Share)) %>%
+  mutate(standard_efficiency = standard_Damage_Share - standard_expected_Damage_Share) 
+
+plot_tab %>% head(5)
+```
+
+```{r warning = FALSE}
+plot_tab$Player <- factor(plot_tab$Player, levels = plot_tab$Player[order(-plot_tab$standard_efficiency)])
+
+most_eff <- plot_tab %>% arrange(desc(standard_efficiency)) %>% head(10)
+
+
+ggplot(most_eff, aes(x = Player, y = standard_efficiency)) +
+  geom_bar(stat = "identity") +
+  labs(title ="Top 10 Most Efficient Players (Standardized)", x = "Player", y = "Standard Efficiency") 
+
+least_eff <- plot_tab %>% arrange(standard_efficiency) %>% head(10)
+
+ggplot(least_eff, aes(x = Player, y = standard_efficiency)) +
+  geom_bar(stat = "identity") +
+  labs(title ="Top 10 Least Efficient Players (Standardized)", x = "Player", y = "Standard Efficiency") 
+```
